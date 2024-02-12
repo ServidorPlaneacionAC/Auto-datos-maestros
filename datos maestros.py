@@ -11,31 +11,122 @@ user = ""
 passwd = ""
 sap_erp = ["1. Grupo Nutresa_ERP_PRD", 300, "ES"]
 
-# Resto del código de la clase SapGui ...
+class SapGui():
+    def __init__(self):
+        try:
+            import win32com.client as win32
 
-def subir_a_drive(archivo_local, carpeta_drive):
-    gauth = GoogleAuth()
-    # Intentar cargar las credenciales desde un archivo existente
-    gauth.LoadCredentialsFile("mycreds.txt")
-    if gauth.credentials is None:
-        # Realizar la autenticación manual
-        gauth.LocalWebserverAuth()
-    elif gauth.access_token_expired:
-        # Actualizar las credenciales si han expirado
-        gauth.Refresh()
-    else:
-        # Autorizar las credenciales
-        gauth.Authorize()
+            # Interfaz básica con SAP
+            self.SapGuiAuto = win32.GetObject("SAPGUI")
+            self.application = self.SapGuiAuto.GetScriptingEngine
+            self.connection = self.application.Children(0)
+            self.session = self.connection.Children(0)
 
-    # Guardar las credenciales para futuras ejecuciones
-    gauth.SaveCredentialsFile("mycreds.txt")
+            if not self.__run_SAP():
+                self.__arrancar_SAP()
 
-    drive = GoogleDrive(gauth)
+        except:
+            self.__arrancar_SAP()
 
-    # Crear un archivo en Google Drive y cargar el archivo local
-    file_drive = drive.CreateFile({"title": archivo_local, "parents": [{"kind": "drive#fileLink", "id": carpeta_drive}]})
-    file_drive.Upload()
-    print(f"Archivo '{archivo_local}' subido a Google Drive en la carpeta con ID {carpeta_drive}")
+    def __arrancar_SAP(self):
+        """Función para arrancar de forma limpia una ventana de saplogon"""
+
+        # Hacer inicialización limpia de SAP
+        cmd("C:\\Windows\\System32\\TASKKILL /IM saplogon.exe /F")
+        self.path = "C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe"
+        subprocess.Popen(self.path)
+        time.sleep(3)
+
+        self.SapGuiAuto = win32.client.GetObject("SAPGUI")
+        if not type(self.SapGuiAuto) == win32.client.CDispatch:
+            return
+        self.application = self.SapGuiAuto.GetScriptingEngine
+        self.connection = self.application.OpenConnection(sap_erp[0], True)
+        time.sleep(3)
+
+        self.session = self.connection.Children(0)
+        time.sleep(3)
+
+        try:
+            if not self.__run_SAP():
+                # Logueo con usuario y contraseña
+                self.session.findById("wnd[0]/usr/txtRSYST-MANDT").text = sap_erp[1]      # Mandante
+                self.session.findById("wnd[0]/usr/txtRSYST-BNAME").text = Acwagavilan     # Usuario
+                self.session.findById("wnd[0]/usr/pwdRSYST-BCODE").text = Marzo2024-      # Contraseña
+                self.session.findById("wnd[0]/usr/txtRSYST-LANGU").text = sap_erp[2]      # Idioma
+                self.session.findById("wnd[0]").sendVKey(0)
+                time.sleep(3)
+        except:
+            pass
+
+        self.__limpiar_msje()
+
+    def __run_SAP(self):
+        """Función para detectar si hay una sesión activa de SAP"""
+
+        # Validar si la sesion de SAP está activo
+        self.session.findById("wnd[0]/tbar[0]/okcd").text = "/n1"
+        self.session.findById("wnd[0]").sendVKey(0)
+        mensaje = self.session.findById("wnd[0]/sbar/pane[0]").Text
+        time.sleep(3)
+
+        if mensaje == "La transacción 1 no existe":
+            return True
+
+        else:
+            return False
+
+    def __limpiar_msje(self):
+        """Función para limpiar de mensajes emergentes y esporádicos el inicio de saplogon"""
+
+        # Eliminar mensajes de comienzo de sesión
+        try:
+            self.session.findById("wnd[1]/usr/radMULTI_LOGON_OPT1").select
+            self.session.findById("wnd[1]/usr/radMULTI_LOGON_OPT1").setFocus
+            self.session.findById("wnd[1]/tbar[0]/btn[0]").press
+            self.session.findById("wnd[1]").sendVKey(0)
+            self.session.findById("wnd[1]").sendVKey(0)
+            self.session.findById("wnd[0]").sendVKey(0)
+            self.session.findById("wnd[1]").sendVKey(0)
+
+        except:
+            pass
+
+    def cerrarSAP(self):
+        """Función para cerrar completamente todos los procesos y ventanas de SAP"""
+
+        try:
+            self.session.findById("wnd[0]").close()
+            time.sleep(1.0)
+            self.session.findById("wnd[1]/usr/btnSPOP-OPTION1").press()  # Boton SI
+            SapGui.terminate()
+        except:
+            cmd("C:\\Windows\\System32\\TASKKILL /IM saplogon.exe /F")
+        print("Todos los procesos en SAP se han cerrado exitosamente")
+
+    def subir_a_drive(self, archivo_local, carpeta_drive):
+        gauth = GoogleAuth()
+        # Intentar cargar las credenciales desde un archivo existente
+        gauth.LoadCredentialsFile("mycreds.txt")
+        if gauth.credentials is None:
+            # Realizar la autenticación manual
+            gauth.LocalWebserverAuth()
+        elif gauth.access_token_expired:
+            # Actualizar las credenciales si han expirado
+            gauth.Refresh()
+        else:
+            # Autorizar las credenciales
+            gauth.Authorize()
+
+        # Guardar las credenciales para futuras ejecuciones
+        gauth.SaveCredentialsFile("mycreds.txt")
+
+        drive = GoogleDrive(gauth)
+
+        # Crear un archivo en Google Drive y cargar el archivo local
+        file_drive = drive.CreateFile({"title": archivo_local, "parents": [{"kind": "drive#fileLink", "id": carpeta_drive}]})
+        file_drive.Upload()
+        print(f"Archivo '{archivo_local}' subido a Google Drive en la carpeta con ID {carpeta_drive}")
 
 def ejecutar_script():
     sap = SapGui()
@@ -52,30 +143,19 @@ def ejecutar_script():
         sap.session.findById("wnd[0]/usr/cntlCONTAINER/shellcont/shell").setCurrentCell(5, "MEINH")
         sap.session.findById("wnd[0]/usr/cntlCONTAINER/shellcont/shell").selectedRows = "5"
         sap.session.findById("wnd[0]/usr/cntlCONTAINER/shellcont/shell").contextMenu
-        sap.session.findById("wnd[0]/usr/cntlCONTAINER/shellcont/shell").selectContextMenuItem "&XXL"
+        sap.session.findById("wnd[0]/usr/cntlCONTAINER/shellcont/shell").selectContextMenuItem("&XXL")
         sap.session.findById("wnd[1]/tbar[0]/btn[0]").press
         sap.session.findById("wnd[1]/tbar[0]/btn[0]").press
 
-        # Esperar un tiempo suficiente para que la descarga se complete (ajusta según sea necesario)
-        time.sleep(5)
-
-        # Obtener datos de la celda activa
-        active_cell_data = sap.session.findById("wnd[0]/usr/cntlCONTAINER/shellcont/shell").getCellValue(5, "MEINH")
-
-        # Crear un archivo Excel y almacenar los datos
-        archivo_excel = "datos_descargados.xlsx"
-        workbook = openpyxl.Workbook()
-        sheet = workbook.active
-        sheet['A1'] = "Datos Descargados"
-        sheet['A2'] = "Celda Activa:"
-        sheet['B2'] = active_cell_data
-
-        workbook.save(archivo_excel)
-        print(f"Datos descargados y guardados en {archivo_excel}")
+        # Guardar el archivo localmente con openpyxl
+        nombre_archivo_local = "nombre_del_archivo.xlsx"
+        libro_excel = openpyxl.Workbook()
+        libro_excel.save(nombre_archivo_local)
 
         # Subir el archivo a Google Drive
-        carpeta_drive_id = "1X_ZsHhHANqNfGiTuYpMUo9zAQ82FIUzz"  # ID de la carpeta en Google Drive
-        subir_a_drive(archivo_excel, carpeta_drive_id)
+        carpeta_drive = "ID_de_la_carpeta_en_Google_Drive"
+        sap.subir_a_drive(nombre_archivo_local, carpeta_drive)
+
     finally:
         sap.cerrarSAP()
 
